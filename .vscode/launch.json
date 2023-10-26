@@ -1,0 +1,43 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "Node filter",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/../install/rrt_exploration/lib/rrt_exploration/filter.py",
+            "args": [
+                "--ros-args",
+                "-r",
+                "__node:=filter",
+                "--params-file",
+                "/tmp/launch_params_3d8wla39"
+            ],
+        }
+        ,
+        {
+            "name": "Node assigner from isaac",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/../../install/rrt_exploration/lib/rrt_exploration/assigner.py",
+            "args": [
+                "--ros-args",
+                "-r",
+                "__node:=assigner",
+                "--params-file",
+                "/tmp/launch_params_gc45c7jd"
+            ],
+        }
+    ]
+}

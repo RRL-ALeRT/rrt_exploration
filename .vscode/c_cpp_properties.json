@@ -1,0 +1,22 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/opt/ros/humble/include/**",
+                "${workspaceFolder}/../install/**",
+                "/usr/include/x86_64-linux-gnu/qt5",
+                "/opt/ros/humble/include/geometry_msgs",
+                "/opt/ros/humble/include/nav_msgs",
+                "/opt/ros/humble/include/tf2_ros"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/clang",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "linux-clang-x64"
+        }
+    ],
+    "version": 4
+}
