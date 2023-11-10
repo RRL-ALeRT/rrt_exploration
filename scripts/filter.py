@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # Copyright 2021 RobosoftAI Inc.
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,20 +36,6 @@ from functions import gridValue, informationGain
 from sklearn.cluster import MeanShift
 from rrt_exploration.msg import PointArray
 
-# #!/usr/bin/env python
-
-# # --------Include modules---------------
-# from copy import copy
-# import rospy
-# from visualization_msgs.msg import Marker
-# from geometry_msgs.msg import Point
-# from nav_msgs.msg import OccupancyGrid
-# from geometry_msgs.msg import PointStamped
-# import tf
-# from numpy import array, vstack, delete
-# from functions import gridValue, informationGain
-# from sklearn.cluster import MeanShift
-# from rrt_exploration.msg import PointArray
 
 # create_subscriptions' callbacks------------------------------
 mapData = OccupancyGrid()
