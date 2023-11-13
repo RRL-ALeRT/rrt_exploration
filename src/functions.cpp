@@ -109,7 +109,7 @@ int gridValue(nav_msgs::msg::OccupancyGrid &mapData, std::vector<float> Xp) {
 
 // ObstacleFree function-------------------------------------
 
-char ObstacleFree(std::vector<float> xnear, std::vector<float> &xnew,
+int ObstacleFree(std::vector<float> xnear, std::vector<float> &xnew,
                   nav_msgs::msg::OccupancyGrid mapsub) {
   float rez = float(mapsub.info.resolution) * .2;
   float stepz = int(ceil(Norm(xnew, xnear)) / rez);
@@ -120,29 +120,36 @@ char ObstacleFree(std::vector<float> xnear, std::vector<float> &xnew,
   geometry_msgs::msg::Point p;
   for (int c = 0; c < stepz; c++) {
     xi = Steer(xi, xnew, rez);
-
-    if (gridValue(mapsub, xi) == 100) {
+    auto d = gridValue(mapsub, xi);
+    // RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "grid value: %d, %f, %f", d, xi[0], xi[1]);
+    if (d == 100) {
       obs = 1;
     }
 
-    if (gridValue(mapsub, xi) == -1) {
+    if (d == -1) {
       unk = 1;
       break;
     }
   }
-  char out = 0;
+  int out = 0;
   xnew = xi;
   if (unk == 1) {
     out = -1;
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "-unknown");
   }
 
   if (obs == 1) {
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "-obstacle");
     out = 0;
   }
 
   if (obs != 1 && unk != 1) {
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "-free");
     out = 1;
   }
-
+  if(obs == 1 && unk == 1) {
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "-both");
+    // out = 1;
+  }
   return out;
 }

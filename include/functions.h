@@ -54,6 +54,6 @@ std::vector<float> Steer(std::vector<float>, std::vector<float>, float);
 int gridValue(nav_msgs::msg::OccupancyGrid&, std::vector<float>);
 
 // Prototipo de la función ObstacleFree
-char ObstacleFree(std::vector<float>, std::vector<float>&, nav_msgs::msg::OccupancyGrid);
+int ObstacleFree(std::vector<float>, std::vector<float>&, nav_msgs::msg::OccupancyGrid);
 
 #endif

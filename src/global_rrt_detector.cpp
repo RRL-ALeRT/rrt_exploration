@@ -274,10 +274,12 @@ int main(int argc, char **argv) {
     *(nh->get_clock()) , 2000 ,  "New"  << x_new[0] << ", " << x_new[1]);
 
     // ObstacleFree    1:free     -1:unkown (frontier region)      0:obstacle
-    char checking = ObstacleFree(x_nearest, x_new, mapData);
+    int checking = ObstacleFree(x_nearest, x_new, mapData);
+
+    RCLCPP_INFO(nh->get_logger(), "*checking: %d", checking);
 
     if (checking == -1) {
-      RCLCPP_INFO_STREAM_THROTTLE(nh->get_logger(), *(nh->get_clock()) , 2000 , "checking point unknown");
+      RCLCPP_INFO(nh->get_logger(),  "checking point unknown");
       exploration_goal.header.stamp = nh->now();
       exploration_goal.header.frame_id = mapData.header.frame_id;
       exploration_goal.point.x = x_new[0];
