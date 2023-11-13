@@ -111,11 +111,13 @@ int gridValue(nav_msgs::msg::OccupancyGrid &mapData, std::vector<float> Xp) {
 
 int ObstacleFree(std::vector<float> xnear, std::vector<float> &xnew,
                   nav_msgs::msg::OccupancyGrid mapsub) {
+// char ObstacleFree(std::vector<float> xnear, std::vector<float> &xnew,
+//                    nav_msgs::msg::OccupancyGrid mapsub) {
   float rez = float(mapsub.info.resolution) * .2;
   float stepz = int(ceil(Norm(xnew, xnear)) / rez);
   std::vector<float> xi = xnear;
-  char obs = 0;
-  char unk = 0;
+  int obs = 0;
+  int unk = 0;
 
   geometry_msgs::msg::Point p;
   for (int c = 0; c < stepz; c++) {
@@ -132,6 +134,7 @@ int ObstacleFree(std::vector<float> xnear, std::vector<float> &xnew,
     }
   }
   int out = 0;
+  // char out;
   xnew = xi;
   if (unk == 1) {
     out = -1;

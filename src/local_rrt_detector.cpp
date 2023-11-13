@@ -271,7 +271,8 @@ int main(int argc, char **argv) {
     RCLCPP_INFO_STREAM(nh->get_logger(), "New" << x_new[0] << ", " << x_new[1]);
 
     // ObstacleFree    1:free     -1:unkown (frontier region)      0:obstacle
-    int checking = ObstacleFree(x_nearest, x_new, mapData);
+    // int checking = ObstacleFree(x_nearest, x_new, mapData);
+    char checking = ObstacleFree(x_nearest, x_new, mapData);
 
     if (checking == -1) {
       RCLCPP_INFO(nh->get_logger(), "checking point unknown");
