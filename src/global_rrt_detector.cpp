@@ -44,7 +44,7 @@ geometry_msgs::msg::PointStamped exploration_goal;
 visualization_msgs::msg::Marker points, line;
 float xdim, ydim, resolution, Xstartx, Xstarty, init_map_x, init_map_y;
 using namespace std::chrono_literals;
-int inflation_window_size = 25;
+int inflation_window_size;
 
 Rdm r; // for genrating random numbers
 
@@ -84,6 +84,9 @@ int main(int argc, char **argv) {
   rclcpp::init(argc, argv);
   auto nh = rclcpp::Node::make_shared("global_rrt_frontier_detector");
 
+  nh->declare_parameter("inflation_window_size", inflation_window_size);  
+  nh->get_parameter("inflation_window_size", inflation_window_size);
+
   // fetching all parameters
   float eta, init_map_x, init_map_y, range;
   std::string map_topic, base_frame_topic;
@@ -95,6 +98,7 @@ int main(int argc, char **argv) {
   // ros::param::param<std::string>(ns+"/map_topic", map_topic, "/robot_1/map");
 
   RCLCPP_INFO(nh->get_logger(), "Initalizating parameters...");
+  RCLCPP_INFO(nh->get_logger(), "Inflation window size: %d", inflation_window_size);
 
   nh->declare_parameter<float>(ns + "/eta", 0.5);
   nh->get_parameter<float>(ns + "/eta", eta);
@@ -107,7 +111,7 @@ int main(int argc, char **argv) {
 
   RCLCPP_INFO(nh->get_logger(), "Parameters initialized");
   RCLCPP_INFO_STREAM(nh->get_logger(), "eta: " << eta);
-  RCLCPP_INFO_STREAM(nh->get_logger(), "inflation_window_size: " << inflation_window_size);
+  // RCLCPP_INFO_STREAM(nh->get_logger(), "inflation_window_size: " << inflation_window_size);
   //---------------------------------------------------------------
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr sub =
       nh->create_subscription<nav_msgs::msg::OccupancyGrid>(map_topic, 100,

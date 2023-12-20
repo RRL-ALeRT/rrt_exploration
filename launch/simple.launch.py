@@ -23,8 +23,13 @@ def generate_launch_description():
                         "namespace_init_count": 1,
                         "eta": launch.substitutions.LaunchConfiguration("Geta"),
                         "map_topic": "/map",
-                        "inflation_windows_size": 15,
-                    }
+                        # "inflation_windows_size": 15,
+                    },
+                    os.path.join(
+                        get_package_share_directory("rrt_exploration"),
+                        "config",
+                        "global_rrt_detector.yaml",
+                    ),
                 ],
             ),
             launch_ros.actions.Node(
@@ -40,7 +45,13 @@ def generate_launch_description():
                         "eta": launch.substitutions.LaunchConfiguration("eta"),
                         "map_topic": "/map",
                         "robot_frame": "/base_link",
-                    }
+                        # "inflation_windows_size": 15,
+                    },
+                    os.path.join(
+                        get_package_share_directory("rrt_exploration"),
+                        "config",
+                        "local_rrt_detector.yaml",
+                    ),
                 ],
             ),
             launch_ros.actions.Node(
