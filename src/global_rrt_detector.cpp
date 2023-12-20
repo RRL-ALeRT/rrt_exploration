@@ -279,6 +279,7 @@ int main(int argc, char **argv) {
 
     // ObstacleFree    1:free     -1:unkown (frontier region)      0:obstacle
     int checking = ObstacleFree(x_nearest, x_new, mapData);
+    // char checking = ObstacleFree(x_nearest, x_new, mapData);
 
     RCLCPP_INFO(nh->get_logger(), "*checking: %d", checking);
 

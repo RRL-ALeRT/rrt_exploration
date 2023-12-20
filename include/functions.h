@@ -55,5 +55,6 @@ int gridValue(nav_msgs::msg::OccupancyGrid&, std::vector<float>);
 
 // Prototipo de la función ObstacleFree
 int ObstacleFree(std::vector<float>, std::vector<float>&, nav_msgs::msg::OccupancyGrid);
+// char ObstacleFree(std::vector<float>, std::vector<float>&, nav_msgs::msg::OccupancyGrid);
 
 #endif
