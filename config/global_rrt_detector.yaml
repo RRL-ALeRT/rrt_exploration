@@ -1,0 +1,3 @@
+global_detector:
+    ros__parameters:
+        inflation_window_size: 5
