@@ -18,26 +18,11 @@
 
 #!/usr/bin/env python3
 
-# Importar módulos
 from copy import copy
-import rclpy
-from nav_msgs.msg import OccupancyGrid
 
 import numpy as np
 import cv2
 
-
-# #!/usr/bin/env python
-
-# #--------Include modules---------------
-# from copy import copy
-# import rospy
-# from nav_msgs.msg import OccupancyGrid
-
-# import numpy as np
-# import cv2
-
-# -----------------------------------------------------
 
 
 def getfrontier(mapData):
@@ -61,23 +46,20 @@ def getfrontier(mapData):
 
     o = cv2.inRange(img, 0, 1)
     edges = cv2.Canny(img, 0, 255)
-    im2, contours, hierarchy = cv2.findContours(o, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(o, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     cv2.drawContours(o, contours, -1, (255, 255, 255), 5)
     o = cv2.bitwise_not(o)
     res = cv2.bitwise_and(o, edges)
     # ------------------------------
 
     frontier = copy(res)
-    im2, contours, hierarchy = cv2.findContours(frontier, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(frontier, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     cv2.drawContours(frontier, contours, -1, (255, 255, 255), 2)
 
-    im2, contours, hierarchy = cv2.findContours(frontier, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(frontier, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     all_pts = []
     if len(contours) > 0:
-        upto = len(contours) - 1
         i = 0
-        maxx = 0
-        maxind = 0
 
         for i in range(0, len(contours)):
             cnt = contours[i]
