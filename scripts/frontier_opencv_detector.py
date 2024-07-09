@@ -22,7 +22,7 @@ import rclpy
 from rclpy.node import Node
 from visualization_msgs.msg import Marker, MarkerArray
 from nav_msgs.msg import OccupancyGrid
-from geometry_msgs.msg import PointStamped
+from geometry_msgs.msg import PointStamped, Pose
 from getfrontier import getfrontier
 import numpy as np
 import heapq
@@ -31,7 +31,27 @@ import math
 
 EXPANSION_SIZE = 2
 ROBOT_RADIUS = 0.3
-TARGET_TOLERANCE = 3
+TARGET_TOLERANCE = 2
+
+
+def world_to_map_coords(map_msg, world_x, world_y):
+    origin_x = map_msg.info.origin.position.x
+    origin_y = map_msg.info.origin.position.y
+    resolution = map_msg.info.resolution
+
+    map_x = int((world_x - origin_x) / resolution)
+    map_y = int((world_y - origin_y) / resolution)
+    return map_x, map_y
+
+
+def map_to_world_coords(map_msg, map_x, map_y):
+    origin_x = map_msg.info.origin.position.x
+    origin_y = map_msg.info.origin.position.y
+    resolution = map_msg.info.resolution
+
+    world_x = map_x * resolution + origin_x
+    world_y = map_y * resolution + origin_y
+    return world_x, world_y
 
 
 def add_unexplored_edges(map_msg):
@@ -113,10 +133,10 @@ def costmap(map_data: OccupancyGrid) -> OccupancyGrid:
     return map_data
 
 
-def astar(array, start, goal):
-    def heuristic(a, b):
-        return np.sqrt((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2)
+def heuristic(a, b):
+    return np.sqrt((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2)
 
+def astar(array, start, goal):
     neighbors = [(0, 1), (0, -1), (1, 0), (-1, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)]
     close_set = set()
     came_from = {}
@@ -146,10 +166,13 @@ def astar(array, start, goal):
         for i, j in neighbors:
             neighbor = current[0] + i, current[1] + j
 
-            if neighbor[0] < 0 or neighbor[0] >= array.shape[0] or neighbor[1] < 0 or neighbor[1] >= array.shape[1]:
+            if neighbor[1] < 0 or neighbor[1] >= array.shape[0] or neighbor[0] < 0 or neighbor[0] >= array.shape[1]:
                 continue
 
-            if array[neighbor[0]][neighbor[1]] == 100:
+            if array[neighbor[1]][neighbor[0]] == 100:
+                continue
+
+            if array[neighbor[1]][neighbor[0]] == -1:
                 continue
 
             tentative_g_score = gscore[current] + heuristic(current, neighbor)
@@ -164,24 +187,24 @@ def astar(array, start, goal):
                 heapq.heappush(oheap, (fscore[neighbor], neighbor))
                 open_set.add(neighbor)
 
-    # If no path to goal was found, return closest path to goal
-    if goal not in came_from:
-        closest_node = None
-        closest_dist = float('inf')
-        for node in close_set:
-            dist = heuristic(node, goal)
-            if dist < closest_dist:
-                closest_node = node
-                closest_dist = dist
-        if closest_node is not None:
-            data = []
-            while closest_node in came_from:
-                data.append(closest_node)
-                closest_node = came_from[closest_node]
-            data.append(start)
-            data.reverse()
-            if closest_dist < TARGET_TOLERANCE:
-                return data, True
+    # # If no path to goal was found, return closest path to goal
+    # if goal not in came_from:
+    #     closest_node = None
+    #     closest_dist = float('inf')
+    #     for node in close_set:
+    #         dist = heuristic(node, goal)
+    #         if dist < closest_dist:
+    #             closest_node = node
+    #             closest_dist = dist
+    #     if closest_node is not None:
+    #         data = []
+    #         while closest_node in came_from:
+    #             data.append(closest_node)
+    #             closest_node = came_from[closest_node]
+    #         data.append(start)
+    #         data.reverse()
+    #         if closest_dist < TARGET_TOLERANCE:
+    #             return data, True
 
     return [], False
 
@@ -193,6 +216,7 @@ class OpenCVFrontierDetector(Node):
         self.targetspub = self.create_publisher(MarkerArray, "/detected_markers", 1)
 
         self.inflated_map_pub = self.create_publisher(OccupancyGrid, "/projected_map_1m_inflated", 1)
+        self.path_publisher = self.create_publisher(Marker, 'path_marker', 1)
         
         # Initialize the transform buffer and listener
         self.tf_buffer = tf2_ros.Buffer()
@@ -209,7 +233,7 @@ class OpenCVFrontierDetector(Node):
 
         map_data_array = np.array(map_data.data).reshape((height, width))
 
-        search_radius = 2
+        search_radius = 1
 
         # Convert frontier point to map coordinates
         map_x = int((frontier[0] - origin_x) / resolution)
@@ -256,12 +280,22 @@ class OpenCVFrontierDetector(Node):
         markers = MarkerArray()
         markers.markers = []
 
+        path_marker = Marker()
+        path_marker.header = self.mapData.header
+        path_marker.type = Marker.LINE_STRIP
+        path_marker.action = Marker.ADD
+        path_marker.scale.x = 0.1  # Line width
+        path_marker.color.a = 1.0  # Alpha
+        path_marker.color.r = 0.0  # Red
+        path_marker.color.g = 1.0  # Green
+        path_marker.color.b = 0.0  # Blue
+        
         frontiers = getfrontier(self.mapData)
         for i, frontier in enumerate(frontiers):
             adjusted_frontier, is_adjusted_frontier = self.get_nearest_free_space(self.mapData, frontier)
 
             reshaped_map = np.array(self.inflated_map.data).reshape(self.inflated_map.info.height, self.inflated_map.info.width)
-            path, is_frontier_reachable = astar(reshaped_map, (int(self.x), int(self.y)), (adjusted_frontier[0], adjusted_frontier[1]))
+            path, is_frontier_reachable = astar(reshaped_map, world_to_map_coords(self.mapData, self.x, self.y), world_to_map_coords(self.mapData, adjusted_frontier[0], adjusted_frontier[1]))
 
             marker = Marker()
             marker.header = self.mapData.header
@@ -270,12 +304,12 @@ class OpenCVFrontierDetector(Node):
             marker.type = Marker.POINTS
             marker.action = Marker.ADD
             marker.scale.x = marker.scale.y = 0.1
-            # if is_adjusted_frontier:
-            #     marker.color.r = 1.0
             if is_frontier_reachable:
                 marker.color.g = 1.0
-            else:
+            elif is_adjusted_frontier:
                 marker.color.b = 1.0
+            else:
+                marker.color.r = 1.0
             marker.color.a = 0.9
             marker.lifetime.sec = 1
 
@@ -287,7 +321,15 @@ class OpenCVFrontierDetector(Node):
 
             marker.points.append(point.point)
             markers.markers.append(marker)
-        
+
+            if is_frontier_reachable:
+                # Add path points
+                for p in path:
+                    pose = Pose()
+                    pose.position.x, pose.position.y = map_to_world_coords(self.mapData, p[0], p[1])
+                    path_marker.points.append(pose.position)
+
+        self.path_publisher.publish(path_marker)
         self.targetspub.publish(markers)
 
     def mapCallBack(self, data):
