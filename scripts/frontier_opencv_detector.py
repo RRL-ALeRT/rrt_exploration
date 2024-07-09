@@ -24,6 +24,8 @@ from visualization_msgs.msg import Marker, MarkerArray
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import PointStamped
 from getfrontier import getfrontier
+import numpy as np
+
 
 class OpenCVFrontierDetector(Node):
     def __init__(self):
@@ -32,6 +34,27 @@ class OpenCVFrontierDetector(Node):
         self.targetspub = self.create_publisher(MarkerArray, "/detected_markers", 1)
         
         self.create_timer(1, self.timer_callback)
+
+    def get_nearest_free_space(self, map_data, frontier):
+        width = map_data.info.width
+        height = map_data.info.height
+        map_data_array = np.array(map_data.data).reshape((height, width))
+        
+        x, y = frontier
+
+        # Define a search radius around the frontier point (adjust as needed)
+        search_radius = 5
+
+        for radius in range(search_radius):
+            for dx in range(-radius, radius + 1):
+                for dy in range(-radius, radius + 1):
+                    nx, ny = int(x + dx), int(y + dy)
+                    if 0 <= nx < width and 0 <= ny < height:
+                        if map_data_array[ny][nx] == 0:
+                            return [nx, ny], True
+
+        # If no free space is found within the radius, return the original frontier
+        return frontier, False
     
     def timer_callback(self):
         if not hasattr(self, 'mapData'):
@@ -42,26 +65,29 @@ class OpenCVFrontierDetector(Node):
 
         frontiers = getfrontier(self.mapData)
         for i, frontier in enumerate(frontiers):
+            adjusted_frontier, is_adjusted_frontier_reachable = self.get_nearest_free_space(self.mapData, frontier)
+
             marker = Marker()
             marker.header = self.mapData.header
             marker.ns = "markers"
             marker.id = i
             marker.type = Marker.POINTS
             marker.action = Marker.ADD
-            marker.pose.orientation.w = 1.0
             marker.scale.x = marker.scale.y = 0.3
-            marker.color.r = 255.0 / 255.0
+            if is_adjusted_frontier_reachable:
+                marker.color.b = 255.0 / 255.0
+            else:
+                marker.color.r = 255.0 / 255.0
             marker.color.g = 0.0 / 255.0
-            marker.color.b = 0.0 / 255.0
-            marker.color.a = 1.0
+            marker.color.a = 0.9
             marker.lifetime.sec = 1
 
             point = PointStamped()
             point.header = self.mapData.header
-            point.point.x = frontier[0]
-            point.point.y = frontier[1]
+            point.point.x = float(adjusted_frontier[0])
+            point.point.y = float(adjusted_frontier[1])
             point.point.z = 0.0
-            
+
             marker.points.append(point.point)
             markers.markers.append(marker)
         
