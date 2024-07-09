@@ -1,28 +1,10 @@
 #!/usr/bin/env python3
 
-# Copyright 2021 RobosoftAI Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-#
-#  Authors: Hassan Umari, Pablo Inigo Blasco (ROS2)
-#
-
 import rclpy
 from rclpy.node import Node
 from visualization_msgs.msg import Marker, MarkerArray
 from nav_msgs.msg import OccupancyGrid
-from geometry_msgs.msg import PointStamped, Pose
+from geometry_msgs.msg import PointStamped, Pose, Twist
 from getfrontier import getfrontier
 import numpy as np
 import heapq
@@ -30,8 +12,46 @@ import tf2_ros
 import math
 import scipy.interpolate as si
 
-EXPANSION_SIZE = 2
+EXPANSION_SIZE = 3
 ROBOT_RADIUS = 0.3
+SPEED = 0.5
+LOOKAHEAD_DISTANCE = 0.4
+TARGET_ERROR = 0.2
+TARGET_ALLOWED_TIME = 10
+MAP_TRIES = 3
+FREE_SPACE_RADIUS = 5
+
+
+def pure_pursuit(current_x, current_y, current_heading, path, index):
+    closest_point = None
+    v = SPEED  # Set the speed to a negative value to make the robot go in reverse
+    # v = -speed  # Set the speed to a negative value to make the robot go in reverse
+    for i in range(index, len(path)):
+        x = path[i][0]
+        y = path[i][1]
+        distance = math.hypot(current_x - x, current_y - y)
+        if LOOKAHEAD_DISTANCE < distance:
+            closest_point = (x, y)
+            index = i
+            break
+    if closest_point is not None:
+        target_heading = math.atan2(closest_point[1] - current_y, closest_point[0] - current_x)
+        # target_heading = math.atan2(current_y - closest_point[1], current_x - closest_point[0])  # Reverse the atan2 arguments
+        desired_steering_angle = target_heading - current_heading
+    else:
+        target_heading = math.atan2(path[-1][1] - current_y, path[-1][0] - current_x)
+        # target_heading = math.atan2(current_y - path[-1][1], current_x - path[-1][0])  # Reverse the atan2 arguments
+        desired_steering_angle = target_heading - current_heading
+        index = len(path) - 1
+    if desired_steering_angle > math.pi:
+        desired_steering_angle -= 2 * math.pi
+    elif desired_steering_angle < -math.pi:
+        desired_steering_angle += 2 * math.pi
+    if desired_steering_angle > math.pi / 6 or desired_steering_angle < -math.pi / 6:
+        sign = 1 if desired_steering_angle > 0 else -1
+        desired_steering_angle = (sign * math.pi / 4)
+        v = 0.0
+    return v, desired_steering_angle, index
 
 
 def pathLength(path):
@@ -189,6 +209,67 @@ def astar(array, start, goal):
     return [], False
 
 
+def get_nearest_free_space(map_data, frontier):
+    width = map_data.info.width
+    height = map_data.info.height
+    resolution = map_data.info.resolution
+    origin_x = map_data.info.origin.position.x
+    origin_y = map_data.info.origin.position.y
+
+    map_data_array = np.array(map_data.data).reshape((height, width))
+
+    search_radius = 2
+
+    # Convert frontier point to map coordinates
+    map_x = int((frontier[0] - origin_x) / resolution)
+    map_y = int((frontier[1] - origin_y) / resolution)
+
+    for i in range(-search_radius, search_radius + 1):
+        for j in range(-search_radius, search_radius + 1):
+            x = map_x + i
+            y = map_y + j
+
+            # Check if the indices are within the bounds of the map
+            if 0 <= x < width and 0 <= y < height:
+                if map_data_array[y, x] == 0:  # Note the swapped indices for correct access
+                    # Convert back to world coordinates
+                    world_x = x * resolution + origin_x
+                    world_y = y * resolution + origin_y
+                    return [world_x, world_y], True
+
+    # If no free space is found within the radius, return the original frontier
+    return frontier, False
+
+
+def add_free_space_at_robot(map_data, robot_x, robot_y, FREE_SPACE_RADIUS):
+    width = map_data.info.width
+    height = map_data.info.height
+    resolution = map_data.info.resolution
+    origin_x = map_data.info.origin.position.x
+    origin_y = map_data.info.origin.position.y
+
+    map_data_array = np.array(map_data.data).reshape((height, width))
+
+    robot_map_x = int((robot_x - origin_x) / resolution)
+    robot_map_y = int((robot_y - origin_y) / resolution)
+
+    for i in range(-FREE_SPACE_RADIUS, FREE_SPACE_RADIUS + 1):
+        for j in range(-FREE_SPACE_RADIUS, FREE_SPACE_RADIUS + 1):
+            x = robot_map_x + i
+            y = robot_map_y + j
+
+            # Check if the indices are within the bounds of the map
+            if 0 <= x < width and 0 <= y < height:
+                map_data_array[y, x] = 0
+
+    # Convert back to int8 array
+    flattened_data = map_data_array.flatten().astype(np.int8)
+
+    # Update the map_data with the expanded map
+    map_data.data = flattened_data.tolist()  # Convert numpy array to list of int8
+    return map_data
+
+
 class OpenCVFrontierDetector(Node):
     def __init__(self):
         super().__init__('detector')
@@ -202,40 +283,16 @@ class OpenCVFrontierDetector(Node):
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
-        self.create_timer(1, self.timer_callback)
+        self.create_timer(0.5, self.frontier_timer_callback)
+        self.create_timer(0.1, self.path_follower_timer_callback)
 
-    def get_nearest_free_space(self, map_data, frontier):
-        width = map_data.info.width
-        height = map_data.info.height
-        resolution = map_data.info.resolution
-        origin_x = map_data.info.origin.position.x
-        origin_y = map_data.info.origin.position.y
+        self.in_motion = False
+        self.pursuit_index = 0
 
-        map_data_array = np.array(map_data.data).reshape((height, width))
+        self.velocity_publisher = self.create_publisher(Twist, '/cmd_vel', 1)
 
-        search_radius = 1
-
-        # Convert frontier point to map coordinates
-        map_x = int((frontier[0] - origin_x) / resolution)
-        map_y = int((frontier[1] - origin_y) / resolution)
-
-        for i in range(-search_radius, search_radius + 1):
-            for j in range(-search_radius, search_radius + 1):
-                x = map_x + i
-                y = map_y + j
-
-                # Check if the indices are within the bounds of the map
-                if 0 <= x < width and 0 <= y < height:
-                    if map_data_array[y, x] == 0:  # Note the swapped indices for correct access
-                        # Convert back to world coordinates
-                        world_x = x * resolution + origin_x
-                        world_y = y * resolution + origin_y
-                        return [world_x, world_y], True
-
-        # If no free space is found within the radius, return the original frontier
-        return frontier, False
     
-    def timer_callback(self):
+    def path_follower_timer_callback(self):
         try:
             # Get the transform from "map" frame to "odom" frame
             self.transform = self.tf_buffer.lookup_transform("map", "body", rclpy.time.Time())
@@ -254,14 +311,47 @@ class OpenCVFrontierDetector(Node):
             self.get_logger().warn("Could not get transform from map to body: {}".format(ex))
             return
 
+        if not self.in_motion:
+            return
+        
+        linear_velocity, angular_velocity, self.pursuit_index = pure_pursuit(self.x, self.y, self.robot_yaw, self.current_path, self.pursuit_index)
+
+        if(abs(self.x - self.current_path[-1][0]) < TARGET_ERROR and abs(self.y - self.current_path[-1][1]) < TARGET_ERROR):
+            self.in_motion = False
+            print("Target reached")
+            linear_velocity = 0
+            angular_velocity = 0
+        
+        if self.get_clock().now().to_msg().sec > self.target_allowed_time:
+            self.in_motion = False
+            print(f"Target not reached in {TARGET_ALLOWED_TIME} seconds.")
+            linear_velocity = 0
+            angular_velocity = 0
+
+        # Publish the velocity commands
+        velocity_command = Twist()
+        velocity_command.linear.x = float(linear_velocity)
+        velocity_command.angular.z = float(angular_velocity)
+        self.velocity_publisher.publish(velocity_command)
+
+    def frontier_timer_callback(self):
         if not hasattr(self, 'mapData'):
+            return
+        
+        if not hasattr(self, 'x'):
+            return
+        
+        if self.in_motion:
             return
 
         markers = MarkerArray()
         markers.markers = []
 
+        current_map = self.mapData
+        current_map = add_free_space_at_robot(current_map, self.x, self.y, FREE_SPACE_RADIUS)
+
         path_marker = Marker()
-        path_marker.header = self.mapData.header
+        path_marker.header = current_map.header
         path_marker.type = Marker.LINE_STRIP
         path_marker.action = Marker.ADD
         path_marker.scale.x = 0.1  # Line width
@@ -270,17 +360,17 @@ class OpenCVFrontierDetector(Node):
         path_marker.color.g = 1.0  # Green
         path_marker.color.b = 0.0  # Blue
 
-        frontiers = getfrontier(self.mapData)
+        frontiers = getfrontier(current_map)
         reachable_paths = []
 
         for i, frontier in enumerate(frontiers):
-            adjusted_frontier, is_adjusted_frontier = self.get_nearest_free_space(self.mapData, frontier)
+            adjusted_frontier, is_adjusted_frontier = get_nearest_free_space(current_map, frontier)
 
             reshaped_map = np.array(self.inflated_map.data).reshape(self.inflated_map.info.height, self.inflated_map.info.width)
-            path, is_frontier_reachable = astar(reshaped_map, world_to_map_coords(self.mapData, self.x, self.y), world_to_map_coords(self.mapData, adjusted_frontier[0], adjusted_frontier[1]))
+            path, is_frontier_reachable = astar(reshaped_map, world_to_map_coords(current_map, self.x, self.y), world_to_map_coords(current_map, adjusted_frontier[0], adjusted_frontier[1]))
 
             marker = Marker()
-            marker.header = self.mapData.header
+            marker.header = current_map.header
             marker.ns = "markers"
             marker.id = i
             marker.type = Marker.POINTS
@@ -296,7 +386,7 @@ class OpenCVFrontierDetector(Node):
             marker.lifetime.sec = 1
 
             point = PointStamped()
-            point.header = self.mapData.header
+            point.header = current_map.header
             point.point.x = float(adjusted_frontier[0])
             point.point.y = float(adjusted_frontier[1])
             point.point.z = 0.0
@@ -314,8 +404,26 @@ class OpenCVFrontierDetector(Node):
             path = bspline_planning(path, len(path)*5)
             for p in path:
                 pose = Pose()
-                pose.position.x, pose.position.y = map_to_world_coords(self.mapData, p[0], p[1])
+                pose.position.x, pose.position.y = map_to_world_coords(current_map, p[0], p[1])
                 path_marker.points.append(pose.position)
+            
+            # Start following the path
+            self.in_motion = True
+            self.pursuit_index = 0
+            self.current_path = path
+            self.target_allowed_time = self.get_clock().now().to_msg().sec + TARGET_ALLOWED_TIME
+
+            self.map_tries = MAP_TRIES
+        
+        else:
+            self.in_motion = False
+            if not hasattr(self, 'map_tries'):
+                self.map_tries = MAP_TRIES
+            self.map_tries -= 1
+            print(f"No reachable frontiers found. Retrying {self.map_tries} more times.")
+            if self.map_tries == 0:
+                print("No frontiers found. Exiting.")
+                rclpy.shutdown()
 
         self.path_publisher.publish(path_marker)
         self.targetspub.publish(markers)
@@ -328,7 +436,7 @@ class OpenCVFrontierDetector(Node):
 
 
 def main(args=None):
-    rclpy.init(args=args)
+    rclpy.init()
 
     detector = OpenCVFrontierDetector()
 
