@@ -28,10 +28,47 @@ import numpy as np
 import heapq
 import tf2_ros
 import math
+import scipy.interpolate as si
 
 EXPANSION_SIZE = 2
 ROBOT_RADIUS = 0.3
-TARGET_TOLERANCE = 2
+
+
+def pathLength(path):
+    for i in range(len(path)):
+        path[i] = (path[i][0],path[i][1])
+        points = np.array(path)
+    differences = np.diff(points, axis=0)
+    distances = np.hypot(differences[:,0], differences[:,1])
+    total_distance = np.sum(distances)
+    return total_distance
+
+
+def bspline_planning(array, sn):
+    try:
+        array = np.array(array)
+        x = array[:, 0]
+        y = array[:, 1]
+        N = 2
+        t = np.arange(len(x))
+        x_tup = si.splrep(t, x, k=N)
+        y_tup = si.splrep(t, y, k=N)
+
+        x_list = list(x_tup)
+        x_list[1] = np.pad(x_list[1], (0, 4), mode='constant')
+
+        y_list = list(y_tup)
+        y_list[1] = np.pad(y_list[1], (0, 4), mode='constant')
+
+        ipl_t = np.linspace(0.0, len(x) - 1, sn)
+        rx = si.splev(ipl_t, x_list)
+        ry = si.splev(ipl_t, y_list)
+
+        path = list(zip(rx, ry))
+    except (TypeError, ValueError):
+        path = array.tolist()
+
+    return path
 
 
 def world_to_map_coords(map_msg, world_x, world_y):
@@ -52,45 +89,6 @@ def map_to_world_coords(map_msg, map_x, map_y):
     world_x = map_x * resolution + origin_x
     world_y = map_y * resolution + origin_y
     return world_x, world_y
-
-
-def add_unexplored_edges(map_msg):
-    width = map_msg.info.width
-    height = map_msg.info.height
-    origin_x = map_msg.info.origin.position.x
-    origin_y = map_msg.info.origin.position.y
-    resolution = map_msg.info.resolution
-
-    data = np.array(map_msg.data).reshape((height, width))
-
-    edge_size = 10
-
-    # Create an extended map with increased edges
-    new_height = height + 2 * edge_size
-    new_width = width + 2 * edge_size
-    new_origin_x = origin_x - edge_size * resolution
-    new_origin_y = origin_y - edge_size * resolution
-
-    extended_map = np.ones((new_height, new_width)) * -1  # Initialize with -1 for unexplored
-
-    # Copy the original map data into the center of the new map
-    extended_map[edge_size:edge_size + height, edge_size:edge_size + width] = data
-
-    # Prepare the modified OccupancyGrid message
-    modified_msg = OccupancyGrid()
-    modified_msg.header = map_msg.header
-    modified_msg.info = map_msg.info
-
-    # Update the map info to reflect the new dimensions and origin
-    modified_msg.info.width = new_width
-    modified_msg.info.height = new_height
-    modified_msg.info.origin.position.x = new_origin_x
-    modified_msg.info.origin.position.y = new_origin_y
-
-    # Flatten the extended map and assign it to the message
-    modified_msg.data = extended_map.flatten().astype(np.int8).tolist()
-
-    return modified_msg
 
 
 def euler_from_quaternion(x,y,z,w):
@@ -135,6 +133,7 @@ def costmap(map_data: OccupancyGrid) -> OccupancyGrid:
 
 def heuristic(a, b):
     return np.sqrt((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2)
+
 
 def astar(array, start, goal):
     neighbors = [(0, 1), (0, -1), (1, 0), (-1, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)]
@@ -186,25 +185,6 @@ def astar(array, start, goal):
                 fscore[neighbor] = tentative_g_score + heuristic(neighbor, goal)
                 heapq.heappush(oheap, (fscore[neighbor], neighbor))
                 open_set.add(neighbor)
-
-    # # If no path to goal was found, return closest path to goal
-    # if goal not in came_from:
-    #     closest_node = None
-    #     closest_dist = float('inf')
-    #     for node in close_set:
-    #         dist = heuristic(node, goal)
-    #         if dist < closest_dist:
-    #             closest_node = node
-    #             closest_dist = dist
-    #     if closest_node is not None:
-    #         data = []
-    #         while closest_node in came_from:
-    #             data.append(closest_node)
-    #             closest_node = came_from[closest_node]
-    #         data.append(start)
-    #         data.reverse()
-    #         if closest_dist < TARGET_TOLERANCE:
-    #             return data, True
 
     return [], False
 
@@ -289,8 +269,10 @@ class OpenCVFrontierDetector(Node):
         path_marker.color.r = 0.0  # Red
         path_marker.color.g = 1.0  # Green
         path_marker.color.b = 0.0  # Blue
-        
+
         frontiers = getfrontier(self.mapData)
+        reachable_paths = []
+
         for i, frontier in enumerate(frontiers):
             adjusted_frontier, is_adjusted_frontier = self.get_nearest_free_space(self.mapData, frontier)
 
@@ -303,14 +285,14 @@ class OpenCVFrontierDetector(Node):
             marker.id = i
             marker.type = Marker.POINTS
             marker.action = Marker.ADD
-            marker.scale.x = marker.scale.y = 0.1
+            marker.scale.x = marker.scale.y = 0.2
             if is_frontier_reachable:
                 marker.color.g = 1.0
             elif is_adjusted_frontier:
                 marker.color.b = 1.0
             else:
                 marker.color.r = 1.0
-            marker.color.a = 0.9
+            marker.color.a = 1.0
             marker.lifetime.sec = 1
 
             point = PointStamped()
@@ -323,17 +305,23 @@ class OpenCVFrontierDetector(Node):
             markers.markers.append(marker)
 
             if is_frontier_reachable:
-                # Add path points
-                for p in path:
-                    pose = Pose()
-                    pose.position.x, pose.position.y = map_to_world_coords(self.mapData, p[0], p[1])
-                    path_marker.points.append(pose.position)
+                reachable_paths.append([path, pathLength(path)])
+
+        if len(reachable_paths) > 0:
+            reachable_paths.sort(key=lambda x: x[1])
+            # Sort paths by length and select the shortest one
+            path = reachable_paths[0][0]
+            path = bspline_planning(path, len(path)*5)
+            for p in path:
+                pose = Pose()
+                pose.position.x, pose.position.y = map_to_world_coords(self.mapData, p[0], p[1])
+                path_marker.points.append(pose.position)
 
         self.path_publisher.publish(path_marker)
         self.targetspub.publish(markers)
 
     def mapCallBack(self, data):
-        self.mapData = add_unexplored_edges(data)
+        self.mapData = data
 
         self.inflated_map = costmap(self.mapData)
         self.inflated_map_pub.publish(self.inflated_map)
