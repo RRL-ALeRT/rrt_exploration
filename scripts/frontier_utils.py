@@ -6,6 +6,43 @@ import numpy as np
 from nav_msgs.msg import OccupancyGrid
 
 
+def add_unexplored_edges(map_msg, edge_size):
+    width = map_msg.info.width
+    height = map_msg.info.height
+    origin_x = map_msg.info.origin.position.x
+    origin_y = map_msg.info.origin.position.y
+    resolution = map_msg.info.resolution
+
+    data = np.array(map_msg.data).reshape((height, width))
+
+    # Create an extended map with increased edges
+    new_height = height + 2 * edge_size
+    new_width = width + 2 * edge_size
+    new_origin_x = origin_x - edge_size * resolution
+    new_origin_y = origin_y - edge_size * resolution
+
+    extended_map = np.ones((new_height, new_width)) * -1  # Initialize with -1 for unexplored
+
+    # Copy the original map data into the center of the new map
+    extended_map[edge_size:edge_size + height, edge_size:edge_size + width] = data
+
+    # Prepare the modified OccupancyGrid message
+    modified_msg = OccupancyGrid()
+    modified_msg.header = map_msg.header
+    modified_msg.info = map_msg.info
+
+    # Update the map info to reflect the new dimensions and origin
+    modified_msg.info.width = new_width
+    modified_msg.info.height = new_height
+    modified_msg.info.origin.position.x = new_origin_x
+    modified_msg.info.origin.position.y = new_origin_y
+
+    # Flatten the extended map and assign it to the message
+    modified_msg.data = extended_map.flatten().astype(np.int8).tolist()
+
+    return modified_msg
+
+
 def pure_pursuit(current_x, current_y, current_heading, path, index, speed, lookahead_distance, forward=True):
     closest_point = None
     if forward:

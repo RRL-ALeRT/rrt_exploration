@@ -19,6 +19,7 @@ TARGET_ERROR = 0.2
 TARGET_ALLOWED_TIME = 10
 MAP_TRIES = 10
 FREE_SPACE_RADIUS = 5
+UNEXPLORED_EDGES_SIZE = 6
 
 
 class OpenCVFrontierDetector(Node):
@@ -196,7 +197,7 @@ class OpenCVFrontierDetector(Node):
         self.targetspub.publish(markers)
 
     def mapCallBack(self, data):
-        self.mapData = data
+        self.mapData = add_unexplored_edges(data, UNEXPLORED_EDGES_SIZE)
 
         self.inflated_map = costmap(self.mapData, EXPANSION_SIZE)
         self.inflated_map_pub.publish(self.inflated_map)
