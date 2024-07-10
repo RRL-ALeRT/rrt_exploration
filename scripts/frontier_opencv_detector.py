@@ -205,17 +205,13 @@ def astar(array, start, goal):
 def get_nearest_free_space(map_data, frontier):
     width = map_data.info.width
     height = map_data.info.height
-    resolution = map_data.info.resolution
-    origin_x = map_data.info.origin.position.x
-    origin_y = map_data.info.origin.position.y
 
     map_data_array = np.array(map_data.data).reshape((height, width))
 
     search_radius = 2
 
     # Convert frontier point to map coordinates
-    map_x = int((frontier[0] - origin_x) / resolution)
-    map_y = int((frontier[1] - origin_y) / resolution)
+    map_x, map_y = world_to_map_coords(map_data, frontier[0], frontier[1])
 
     for i in range(-search_radius, search_radius + 1):
         for j in range(-search_radius, search_radius + 1):
@@ -226,8 +222,7 @@ def get_nearest_free_space(map_data, frontier):
             if 0 <= x < width and 0 <= y < height:
                 if map_data_array[y, x] == 0:  # Note the swapped indices for correct access
                     # Convert back to world coordinates
-                    world_x = x * resolution + origin_x
-                    world_y = y * resolution + origin_y
+                    world_x, world_y = map_to_world_coords(map_data, x, y)
                     return [world_x, world_y], True
 
     # If no free space is found within the radius, return the original frontier
@@ -237,14 +232,10 @@ def get_nearest_free_space(map_data, frontier):
 def add_free_space_at_robot(map_data, robot_x, robot_y, FREE_SPACE_RADIUS):
     width = map_data.info.width
     height = map_data.info.height
-    resolution = map_data.info.resolution
-    origin_x = map_data.info.origin.position.x
-    origin_y = map_data.info.origin.position.y
 
     map_data_array = np.array(map_data.data).reshape((height, width))
 
-    robot_map_x = int((robot_x - origin_x) / resolution)
-    robot_map_y = int((robot_y - origin_y) / resolution)
+    robot_map_x, robot_map_y = world_to_map_coords(map_data, robot_x, robot_y)
 
     for i in range(-FREE_SPACE_RADIUS, FREE_SPACE_RADIUS + 1):
         for j in range(-FREE_SPACE_RADIUS, FREE_SPACE_RADIUS + 1):
