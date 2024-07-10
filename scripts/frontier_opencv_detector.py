@@ -111,18 +111,11 @@ def map_to_world_coords(map_msg, map_x, map_y):
     return world_x, world_y
 
 
-def euler_from_quaternion(x,y,z,w):
-    t0 = +2.0 * (w * x + y * z)
-    t1 = +1.0 - 2.0 * (x * x + y * y)
-    roll_x = math.atan2(t0, t1)
-    t2 = +2.0 * (w * y - z * x)
-    t2 = +1.0 if t2 > +1.0 else t2
-    t2 = -1.0 if t2 < -1.0 else t2
-    pitch_y = math.asin(t2)
-    t3 = +2.0 * (w * z + x * y)
-    t4 = +1.0 - 2.0 * (y * y + z * z)
-    yaw_z = math.atan2(t3, t4)
-    return yaw_z
+def yaw_from_quaternion(x, y, z, w):
+    siny_cosp = 2 * (w * z + x * y)
+    cosy_cosp = 1 - 2 * (y * y + z * z)
+    yaw = math.atan2(siny_cosp, cosy_cosp)
+    return yaw
 
 
 def costmap(map_data: OccupancyGrid) -> OccupancyGrid:
@@ -289,21 +282,19 @@ class OpenCVFrontierDetector(Node):
         self.in_motion = False
         self.pursuit_index = 0
 
-        self.velocity_publisher = self.create_publisher(Twist, '/cmd_vel', 1)
+        self.twist_publisher = self.create_publisher(Twist, '/cmd_vel', 1)
 
-    
     def path_follower_timer_callback(self):
         try:
-            # Get the transform from "map" frame to "odom" frame
-            self.transform = self.tf_buffer.lookup_transform("map", "body", rclpy.time.Time())
+            transform = self.tf_buffer.lookup_transform("map", "body", rclpy.time.Time())
 
             # Extract the robot's position and orientation in the "map" frame
-            self.x = self.transform.transform.translation.x
-            self.y = self.transform.transform.translation.y
-            self.robot_yaw = euler_from_quaternion(self.transform.transform.rotation.x,
-                                                self.transform.transform.rotation.y,
-                                                self.transform.transform.rotation.z,
-                                                self.transform.transform.rotation.w)
+            self.x = transform.transform.translation.x
+            self.y = transform.transform.translation.y
+            self.robot_yaw = yaw_from_quaternion(transform.transform.rotation.x,
+                                                transform.transform.rotation.y,
+                                                transform.transform.rotation.z,
+                                                transform.transform.rotation.w)
 
             self.robot_position = [self.x, self.y]
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException, tf2_ros.ExtrapolationException) as ex:
@@ -328,11 +319,11 @@ class OpenCVFrontierDetector(Node):
             linear_velocity = 0
             angular_velocity = 0
 
-        # Publish the velocity commands
-        velocity_command = Twist()
-        velocity_command.linear.x = float(linear_velocity)
-        velocity_command.angular.z = float(angular_velocity)
-        self.velocity_publisher.publish(velocity_command)
+        # Publish the twist commands
+        twist_command = Twist()
+        twist_command.linear.x = float(linear_velocity)
+        twist_command.angular.z = float(angular_velocity)
+        self.twist_publisher.publish(twist_command)
 
     def frontier_timer_callback(self):
         if not hasattr(self, 'mapData'):
@@ -402,15 +393,18 @@ class OpenCVFrontierDetector(Node):
             # Sort paths by length and select the shortest one
             path = reachable_paths[0][0]
             path = bspline_planning(path, len(path)*5)
+
+            self.current_path = []
             for p in path:
                 pose = Pose()
                 pose.position.x, pose.position.y = map_to_world_coords(current_map, p[0], p[1])
                 path_marker.points.append(pose.position)
-            
+
+                self.current_path.append([pose.position.x, pose.position.y])
+
             # Start following the path
             self.in_motion = True
             self.pursuit_index = 0
-            self.current_path = path
             self.target_allowed_time = self.get_clock().now().to_msg().sec + TARGET_ALLOWED_TIME
 
             self.map_tries = MAP_TRIES
