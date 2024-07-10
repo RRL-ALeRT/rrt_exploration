@@ -145,7 +145,7 @@ class OpenCVFrontierDetector(Node):
             else:
                 marker.color.r = 1.0
             marker.color.a = 1.0
-            marker.lifetime.sec = 1
+            marker.lifetime.sec = 2
 
             point = PointStamped()
             point.header = current_map.header
