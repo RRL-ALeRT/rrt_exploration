@@ -12,7 +12,7 @@ import tf2_ros
 import math
 import scipy.interpolate as si
 
-EXPANSION_SIZE = 3
+EXPANSION_SIZE = 2
 ROBOT_RADIUS = 0.3
 SPEED = 0.5
 LOOKAHEAD_DISTANCE = 0.4
