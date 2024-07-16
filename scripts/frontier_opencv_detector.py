@@ -122,7 +122,7 @@ class OpenCVFrontierDetector(Node):
         if not self.in_motion:
             return
         
-        if is_path_through_walls(self.mapData, self.current_path_map):
+        if is_path_through_walls(self.inflated_map, self.current_path_map):
             print("Path passes through walls, cancelling target...")
             self.in_motion = False
             return
@@ -168,7 +168,7 @@ class OpenCVFrontierDetector(Node):
         markers = MarkerArray()
         markers.markers = []
 
-        current_map = self.mapData
+        current_map = self.inflated_map
         current_map = add_free_space_at_robot(current_map, self.x, self.y, FREE_SPACE_RADIUS)
 
         path_marker = Marker()
