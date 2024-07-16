@@ -5,7 +5,6 @@ from rclpy.node import Node
 from visualization_msgs.msg import Marker, MarkerArray
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import PointStamped, Pose, Twist
-from getfrontier import getfrontier
 import numpy as np
 import tf2_ros
 from frontier_utils import *
@@ -13,13 +12,72 @@ from copy import deepcopy
 
 EXPANSION_SIZE = 2
 ROBOT_RADIUS = 0.3
-SPEED = 0.3
+SPEED = 0.2
 LOOKAHEAD_DISTANCE = 0.4
 TARGET_ERROR = 0.2
 TARGET_ALLOWED_TIME = 10
-MAP_TRIES = 10
+MAP_TRIES = 20
 FREE_SPACE_RADIUS = 5
 UNEXPLORED_EDGES_SIZE = 6
+
+
+def frontierB(matrix):
+    for i, row in enumerate(matrix):
+        for j, value in enumerate(row):
+            if value == 0.0:
+                if (i > 0 and matrix[i - 1][j] < 0) or \
+                    (i < len(matrix) - 1 and matrix[i + 1][j] < 0) or \
+                    (j > 0 and matrix[i][j - 1] < 0) or \
+                    (j < len(row) - 1 and matrix[i][j + 1] < 0):
+                    matrix[i][j] = 2
+
+    return matrix
+
+
+def assign_groups(matrix):
+    group = 1
+    groups = {}
+    visited = set()
+    stack = []
+
+    def dfs(matrix, i, j, group, groups):
+        stack.append((i, j))
+        while stack:
+            x, y = stack.pop()
+            if (x, y) in visited:
+                continue
+            visited.add((x, y))
+            if matrix[x][y] != 2:
+                continue
+            if group in groups:
+                groups[group].append((x, y))
+            else:
+                groups[group] = [(x, y)]
+            for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (-1, 1), (1, -1)]:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < len(matrix) and 0 <= ny < len(matrix[0]):
+                    stack.append((nx, ny))
+
+        return group + 1
+
+    for i in range(len(matrix)):
+        for j in range(len(matrix[0])):
+            if matrix[i][j] == 2 and (i, j) not in visited:
+                group = dfs(matrix, i, j, group, groups)
+
+    return matrix, groups
+
+
+def fGroups(groups):
+    sorted_groups = sorted(groups.items(), key=lambda x: len(x[1]), reverse=True)
+    top_five_groups = [g for g in sorted_groups[:5] if len(g[1]) > 2]    
+    return top_five_groups
+
+
+def getfrontiers(map):
+    matrix = frontierB(map)
+    matrix, groups = assign_groups(matrix)
+    return fGroups(groups)
 
 
 class OpenCVFrontierDetector(Node):
@@ -123,7 +181,7 @@ class OpenCVFrontierDetector(Node):
         path_marker.color.g = 1.0  # Green
         path_marker.color.b = 0.0  # Blue
 
-        frontiers = getfrontier(current_map)
+        frontiers = getfrontiers(current_map)
         reachable_paths = []
 
         for i, frontier in enumerate(frontiers):
