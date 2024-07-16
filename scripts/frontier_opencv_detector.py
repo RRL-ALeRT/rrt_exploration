@@ -10,14 +10,14 @@ import tf2_ros
 from frontier_utils import *
 from copy import deepcopy
 
-EXPANSION_SIZE = 3
-ROBOT_RADIUS = 0.3
+EXPANSION_SIZE = 2
 SPEED = 0.2
 LOOKAHEAD_DISTANCE = 0.4
-TARGET_ERROR = 0.2
+TARGET_ERROR = 0.3
 TARGET_ALLOWED_TIME = 10
 MAP_TRIES = 20
 UNEXPLORED_EDGES_SIZE = 6
+FREE_SPACE_RADIUS = 0.5
 
 
 def frontierB(matrix):
@@ -73,10 +73,15 @@ def fGroups(groups):
     return top_five_groups
 
 
-def getfrontiers(map):
-    matrix = frontierB(map)
+def getfrontier_groups(map):
+    data = np.array(map.data).reshape(map.info.height,map.info.width) * map.info.resolution
+    matrix = frontierB(data)
     matrix, groups = assign_groups(matrix)
-    return fGroups(groups)
+    return fGroups(groups), matrix
+
+
+def calculate_centroid(x_coords, y_coords):
+    return np.mean(x_coords, dtype=int), np.mean(y_coords, dtype=int)
 
 
 class OpenCVFrontierDetector(Node):
@@ -182,14 +187,43 @@ class OpenCVFrontierDetector(Node):
         path_marker.color.g = 1.0  # Green
         path_marker.color.b = 0.0  # Blue
 
-        frontiers = getfrontiers(current_map)
-        reachable_paths = []
+        frontier_groups, matrix = getfrontier_groups(current_map)
+        frontiers = []
+        if len(frontier_groups) == 0:
+            self.get_logger().warn("No frontiers found")
+            return
+        for i, group in enumerate(frontier_groups):
+            y_coords, x_coords = zip(*group[1])
+            centroid = calculate_centroid(x_coords, y_coords)
+            frontiers.append(centroid)
 
+        # Convert frontiers from map coordinates to world coordinates
+        frontiers_world_coords = [map_to_world_coords(current_map, frontier[0], frontier[1]) for frontier in frontiers]
+
+        # Calculate distances from the robot to each frontier
+        distances = [
+            np.linalg.norm([frontier[0] - self.x, frontier[1] - self.y])
+            for frontier in frontiers_world_coords
+        ]
+
+        # Filter and sort frontiers based on distance
+        filtered_frontiers = [
+            frontier for distance, frontier in sorted(zip(distances, frontiers_world_coords))
+            if distance > TARGET_ERROR * 2
+        ]
+
+        # Keep only the top 5 frontiers
+        frontiers = filtered_frontiers[:5]
+
+        reachable_paths = []
         for i, frontier in enumerate(frontiers):
             adjusted_frontier, is_adjusted_frontier = get_nearest_free_space(current_map, frontier)
 
-            reshaped_map = np.array(self.inflated_map.data).reshape(self.inflated_map.info.height, self.inflated_map.info.width)
-            path, is_frontier_reachable = astar(reshaped_map, world_to_map_coords(current_map, self.x, self.y), world_to_map_coords(current_map, adjusted_frontier[0], adjusted_frontier[1]))
+            reshaped_map = np.array(current_map.data).reshape(current_map.info.height, current_map.info.width)
+            start_coords = world_to_map_coords(current_map, self.x, self.y)
+            target_coords = world_to_map_coords(current_map, adjusted_frontier[0], adjusted_frontier[1])
+
+            path, is_frontier_reachable = astar(reshaped_map, start_coords, target_coords)
 
             marker = Marker()
             marker.header = current_map.header
@@ -254,12 +288,12 @@ class OpenCVFrontierDetector(Node):
 
         self.path_publisher.publish(path_marker)
         self.targetspub.publish(markers)
+        self.inflated_map_pub.publish(current_map)
 
     def mapCallBack(self, data):
         self.mapData = add_unexplored_edges(data, UNEXPLORED_EDGES_SIZE)
 
         self.inflated_map = costmap(self.mapData, EXPANSION_SIZE)
-        self.inflated_map_pub.publish(self.inflated_map)
 
 
 def main(args=None):

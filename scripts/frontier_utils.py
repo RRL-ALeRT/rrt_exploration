@@ -235,7 +235,7 @@ def get_nearest_free_space(map_data, frontier):
 
     map_data_array = np.array(map_data.data).reshape((height, width))
 
-    search_radius = 10  # Adjust search radius as needed
+    search_radius = 5  # Adjust search radius as needed
 
     # Convert frontier point to map coordinates
     map_x, map_y = world_to_map_coords(map_data, frontier[0], frontier[1])
@@ -260,28 +260,33 @@ def get_nearest_free_space(map_data, frontier):
     return frontier, False
 
 
-def add_free_space_at_robot(map_data, robot_x, robot_y, FREE_SPACE_RADIUS):
+def add_free_space_at_robot(map_data, robot_x, robot_y, free_space_radius):
+    # Convert radius from world coordinates to map coordinates
+    free_space_radius = int(free_space_radius / map_data.info.resolution)
     width = map_data.info.width
     height = map_data.info.height
 
+    # Convert map data to a numpy array
     map_data_array = np.array(map_data.data).reshape((height, width))
 
+    # Convert robot world coordinates to map coordinates
     robot_map_x, robot_map_y = world_to_map_coords(map_data, robot_x, robot_y)
 
-    for i in range(-FREE_SPACE_RADIUS, FREE_SPACE_RADIUS + 1):
-        for j in range(-FREE_SPACE_RADIUS, FREE_SPACE_RADIUS + 1):
+    # Update map data within the radius around the robot
+    for i in range(-free_space_radius, free_space_radius + 1):
+        for j in range(-free_space_radius, free_space_radius + 1):
             x = robot_map_x + i
             y = robot_map_y + j
 
             # Check if the indices are within the bounds of the map
             if 0 <= x < width and 0 <= y < height:
-                map_data_array[y, x] = 0
+                map_data_array[y, x] = 0  # Assuming '0' represents free space
 
-    # Convert back to int8 array
-    flattened_data = map_data_array.flatten().astype(np.int8)
+    # Flatten the numpy array and convert it to a list of int8
+    flattened_data = map_data_array.flatten().astype(np.int8).tolist()
 
-    # Update the map_data with the expanded map
-    map_data.data = flattened_data.tolist()  # Convert numpy array to list of int8
+    # Update the map_data with the modified map
+    map_data.data = flattened_data
     return map_data
 
 
