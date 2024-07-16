@@ -11,14 +11,14 @@ import tf2_ros
 from frontier_utils import *
 from copy import deepcopy
 
-EXPANSION_SIZE = 2
+EXPANSION_SIZE = 3
 ROBOT_RADIUS = 0.3
 SPEED = 0.3
 LOOKAHEAD_DISTANCE = 0.4
 TARGET_ERROR = 0.2
 TARGET_ALLOWED_TIME = 10
 MAP_TRIES = 10
-FREE_SPACE_RADIUS = 5
+FREE_SPACE_RADIUS = 8
 UNEXPLORED_EDGES_SIZE = 6
 
 
@@ -98,10 +98,12 @@ class OpenCVFrontierDetector(Node):
         self.twist_publisher.publish(twist_command)
 
     def frontier_timer_callback(self):
-        if not hasattr(self, 'mapData'):
+        if not hasattr(self, 'inflated_map'):
+            self.get_logger().warn("No map received yet")
             return
         
         if not hasattr(self, 'x'):
+            self.get_logger().warn("No robot position received yet")
             return
         
         if self.in_motion:
