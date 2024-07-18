@@ -10,14 +10,13 @@ import tf2_ros
 from frontier_utils import *
 from copy import deepcopy
 
-EXPANSION_SIZE = 2
-SPEED = 0.3
-LOOKAHEAD_DISTANCE = 0.4
-TARGET_ERROR = 0.3
+SPEED = 0.2
+LOOKAHEAD_DISTANCE = 0.25
+TARGET_ERROR = 0.1
 TARGET_ALLOWED_TIME = 10
 MAP_TRIES = 20
 UNEXPLORED_EDGES_SIZE = 6
-FREE_SPACE_RADIUS = 0.5
+FREE_SPACE_RADIUS = 0.2
 
 
 def frontierB(matrix):
@@ -87,7 +86,7 @@ def calculate_centroid(x_coords, y_coords):
 class OpenCVFrontierDetector(Node):
     def __init__(self):
         super().__init__('detector')
-        self.create_subscription(OccupancyGrid, '/projected_map_1m', self.mapCallBack, 1)
+        # self.create_subscription(OccupancyGrid, '/projected_map_1m', self.mapCallBack, 1)
         self.targetspub = self.create_publisher(MarkerArray, "/detected_markers", 1)
 
         self.inflated_map_pub = self.create_publisher(OccupancyGrid, "/projected_map_1m_inflated", 1)
@@ -175,6 +174,7 @@ class OpenCVFrontierDetector(Node):
         markers.markers = []
 
         current_map = self.inflated_map
+
         current_map = add_free_space_at_robot(current_map, self.x, self.y, FREE_SPACE_RADIUS)
 
         path_marker = Marker()
@@ -259,7 +259,7 @@ class OpenCVFrontierDetector(Node):
             path = reachable_paths[0][0]
             self.current_path_map = deepcopy(path)
 
-            path = bspline_planning(path, len(path)*5)
+            path = bspline_planning(path, len(path)*6)
 
             self.current_path_world = []
             for p in path:
@@ -289,22 +289,3 @@ class OpenCVFrontierDetector(Node):
         self.path_publisher.publish(path_marker)
         self.targetspub.publish(markers)
         self.inflated_map_pub.publish(current_map)
-
-    def mapCallBack(self, data):
-        self.mapData = add_unexplored_edges(data, UNEXPLORED_EDGES_SIZE)
-
-        self.inflated_map = costmap(self.mapData, EXPANSION_SIZE)
-
-
-def main(args=None):
-    rclpy.init()
-
-    detector = OpenCVFrontierDetector()
-
-    rclpy.spin(detector)
-
-    detector.destroy_node()
-    rclpy.shutdown()
-
-if __name__ == "__main__":
-    main()

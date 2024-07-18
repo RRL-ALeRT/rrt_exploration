@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import rclpy
-from frontier_opencv_detector import OpenCVFrontierDetector
+from avoid_holes_utils import OpenCVFrontierDetector
 from frontier_utils import *
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2
@@ -9,17 +9,18 @@ from std_msgs.msg import Header
 
 from copy import deepcopy
 
-EXPANSION_SIZE = 2
 UNEXPLORED_EDGES_SIZE = 6
-MIN_Z = 0.1
-MAX_Z = 0.4
+MIN_Z = -0.06
+MAX_Z = 0.25
+FREE_SPACE_RADIUS = 0.5
+EXPANSION_SIZE = 2
 
 
 class AvoidHoles(OpenCVFrontierDetector):
     def __init__(self):
         super().__init__()
 
-        self.sub_pc2 = self.create_subscription(PointCloud2, "/octomap_point_cloud_centers", self.pointcloud2_callback, 1)
+        self.sub_pc2 = self.create_subscription(PointCloud2, "/navigation/octomap_point_cloud_centers", self.pointcloud2_callback, 1)
         self.listen_to_pointcloud = False
 
         self.pub_grid = self.create_publisher(OccupancyGrid, '/two_d', 1)
@@ -28,9 +29,6 @@ class AvoidHoles(OpenCVFrontierDetector):
 
         self.cell_size = 0.1
 
-    def mapCallBack(self, data):
-        return
-    
     def timer_cb(self):
         self.listen_to_pointcloud = True
 
@@ -99,6 +97,8 @@ class AvoidHoles(OpenCVFrontierDetector):
 
         grid_msg.data = occupancy_grid.flatten().tolist()
         self.inflated_map = deepcopy(add_unexplored_edges(grid_msg, UNEXPLORED_EDGES_SIZE))
+        self.inflated_map = costmap(self.inflated_map, EXPANSION_SIZE)
+        self.inflated_map = add_free_space_at_robot(self.inflated_map, self.x, self.y, FREE_SPACE_RADIUS)
         self.z_values = z_values.flatten().tolist()
 
         self.pub_grid.publish(self.inflated_map)
